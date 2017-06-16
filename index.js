@@ -87,12 +87,20 @@ function runQUnitTestsWithSnapshots(url) {
 
       snapshot = await takeHeapSnapshot();
       snapshot.buildSync();
-      // do something
+
+      for (const node of snapshot) {
+        if (node.type === 'object' && node.name === 'Container') {
+          const path = Heapsnapshot.pathToRoot(node);
+          throw new Error(`leaked Container via ${path.join(' -> ')}`)
+        }
+      }
     }
   });
 }
 
 async function takeHeapSnapshot(heapProfiler) {
+  await heapProfiler.collectGarbage();
+
   let buffer = '';
 
   heapProfiler.addHeapSnapshotChunk = (params) => {
