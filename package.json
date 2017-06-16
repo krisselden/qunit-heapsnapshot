@@ -1,0 +1,14 @@
+{
+  "name": "qunit-heapsnapshot",
+  "version": "0.0.1",
+  "license": "MIT",
+  "repository": "https://github.com/krisselden/qunit-heapsnapshot.git",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "dependencies": {
+    "chrome-debugging-client": "^0.4.1",
+    "heapsnapshot": "^0.0.4"
+  }
+}
