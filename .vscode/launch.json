@@ -10,7 +10,7 @@
       "name": "Launch Program",
       "program": "${workspaceRoot}/index.js",
       "args": [
-        "http://localhost:7357/tests/index.html?testId=035c8ec2"
+        "http://localhost:7357/tests/index.html?testId=aa571de6"
       ]
     }
   ]
