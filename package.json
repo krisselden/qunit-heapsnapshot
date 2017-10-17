@@ -7,8 +7,17 @@
   "files": [
     "index.js"
   ],
+  "scripts": {
+    "start": "node --max_old_space_size=4096 index.js",
+    "debug": "node --max_old_space_size=4096 --inspect-brk index.js"
+  },
   "dependencies": {
     "chrome-debugging-client": "^0.4.1",
-    "heapsnapshot": "^0.0.4"
+    "heapsnapshot": "^0.0.6"
+  },
+  "devDependencies": {
+    "babel-eslint": "^7.2.3",
+    "eslint": "^3.19.0",
+    "eslint-config-recommended": "^1.5.0"
   }
 }
