@@ -1,5 +1,5 @@
 const fs = require('fs');
-const url = require('url');
+const { promisify } = require('util');
 const Heapsnapshot = require('heapsnapshot');
 const index = require('chrome-debugging-client');
 const protocol = require('chrome-debugging-client/dist/protocol/tot');
@@ -8,14 +8,20 @@ if (process.argv.length < 3) {
   console.error(`${process.argv[1]} [url]`);
 }
 
+const additionalArguments = [
+  '--ignore-certificate-errors',
+];
+
+const readAsync = promisify(fs.readFile);
+
 runQUnitTestsWithSnapshots(process.argv[2]).catch((err) => {
   console.error(err);
 });
 
 function runQUnitTestsWithSnapshots(url) {
   return index.createSession(async (session) => {
-    const browser = await session.spawnBrowser('canary', {
-    });
+    const codeToInject = await readAsync('./qunit-injection-code.js', 'utf8');
+    const browser = await session.spawnBrowser('canary', { additionalArguments });
 
     const apiClient = session.createAPIClient('localhost', browser.remoteDebuggingPort);
 
@@ -61,41 +67,13 @@ function runQUnitTestsWithSnapshots(url) {
 
     await pageLoad;
 
-    const scriptId = await compileScript(runtime, `
-let __testStarted = false;
-let __testDone = undefined;
+    if (!await isQUnitAvailable(runtime, contextId)) {
+      throw new Error('QUnit is not available on this page!');
+    }
 
-QUnit.on("runStart", function () {
-  __testStarted = true;
-  console.debug('>>>>  RUN START');
-});
-
-QUnit.on("testEnd", function () {
-  console.debug('>>>>  TEST END');
-  QUnit.config.blocking = true;
-  __testDone(false);
-});
-
-QUnit.on("runEnd", function () {
-  console.debug('>>>>  RUN END');
-  __testDone(true);
-});
-
-function __resumeTest() {
-  if (!__testStarted) {
-    console.debug('>>>>  QUnit.start');
-    QUnit.start();
-  } else {
-    QUnit.config.blocking = false;
-  }
-
-  return new Promise(function(resolve) {
-    __testDone = resolve;
-  });
-}
-`, 'http://localhost:7357/__pageload.js', contextId);
-    let loadResult = await runtime.runScript({
-      scriptId: scriptId
+    const scriptId = await compileScript(runtime, codeToInject, 'http://localhost:7357/__pageload.js', contextId);
+    await runtime.runScript({
+      scriptId: scriptId,
     });
 
     while (true) {
@@ -108,17 +86,32 @@ function __resumeTest() {
       let isDone = toBoolean(result);
       if (isDone) break;
 
-      snapshot = await takeHeapSnapshot(heapProfiler);
-      snapshot.buildSync();
+      const snapshot = await takeHeapSnapshot(heapProfiler);
 
-      for (const node of snapshot) {
-        if (node.type === 'object' && node.name === 'Container') {
-          const path = Heapsnapshot.pathToRoot(node);
-          throw new Error(`leaked Container via ${path.join(' -> ')}`)
+      for (const Container of findObjectsInSnapshot(snapshot, 'Container')) {
+        console.log('leaked Container via:');
+        try {
+          const path = Heapsnapshot.pathToRoot(Container);
+          path.forEach((node) => console.log(node.name, node.in));
+        } catch(err) {
+          if (/has no path to root/.test(err.message)) {
+            console.log("Couldn't find path to root!");
+          } else {
+            throw err;
+          }
         }
       }
     }
   });
+}
+
+async function isQUnitAvailable(runtime, contextId) {
+  const hasQUnit = await runtime.evaluate({
+    contextId,
+    expression: `!!window.QUnit.start`,
+    awaitPromise: true
+  });
+  return toBoolean(hasQUnit);
 }
 
 async function takeHeapSnapshot(heapProfiler) {
@@ -137,6 +130,14 @@ async function takeHeapSnapshot(heapProfiler) {
   await heapProfiler.takeHeapSnapshot({ reportProgress: true });
 
   return new Heapsnapshot(JSON.parse(buffer));
+}
+
+function *findObjectsInSnapshot(snapshot, name) {
+  for (const node of snapshot) {
+    if (node.type === 'object' && node.name === name) {
+      yield node;
+    }
+  }
 }
 
 function toBoolean(evalReturn) {
